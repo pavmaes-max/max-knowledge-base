@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>База Знаний: Как мыслит ИИ</title>
+    <!-- Подключаем официальный мост MAX Bridge из документации девелоперов -->
+    <script src="https://max.ru"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 15px;
+            background-color: #f5f5f7;
+            color: #333;
+        }
+        .search-box {
+            width: 100%;
+            padding: 12px;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            box-sizing: border-box;
+            margin-bottom: 15px;
+        }
+        .tabs {
+            display: flex;
+            gap: 8px;
+            overflow-x: auto;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+        }
+        .tab-btn {
+            padding: 8px 14px;
+            background-color: #e5e5ea;
+            border: none;
+            border-radius: 20px;
+            font-size: 14px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .tab-btn.active {
+            background-color: #007aff;
+            color: white;
+        }
+        .card {
+            background: white;
+            padding: 15px;
+            border-radius: 12px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: #8e8e93;
+            margin-bottom: 8px;
+        }
+        .card-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 8px;
+            color: #1c1c1e;
+        }
+        .card-text {
+            font-size: 14px;
+            line-height: 1.5;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Живой поиск -->
+    <input type="text" id="search" class="search-box" placeholder="Поиск по базе знаний...">
+
+    <!-- Фильтры по Рубрикам -->
+    <div class="tabs" id="tabs-container">
+        <button class="tab-btn active" onclick="filterRubric('Все')">Все посты</button>
+    </div>
+
+    <!-- Контейнер для вывода статей -->
+    <div id="articles-container"></div>
+
+    <!-- Подключаем наш файл с 78 постами -->
+    <script src="data.js"></script>
+    <script>
+        // Инициализация MAX Bridge для интеграции темы оформления мессенджера
+        if (window.WebApp) {
+            window.WebApp.ready();
+            // Подстраиваем фон под темную или светлую тему пользователя автоматически
+            document.body.style.backgroundColor = window.WebApp.backgroundColor || "#f5f5f7";
+        }
+
+        let currentRubric = 'Все';
+
+        // Автоматически собираем список уникальных рубрик для кнопок
+        const rubrics = ['Все', ...new Set(AI_KNOWLEDGE_BASE.map(item => item.rubric))];
+        const tabsContainer = document.getElementById('tabs-container');
+        tabsContainer.innerHTML = '';
+        rubrics.forEach(rubric => {
+            const btn = document.createElement('button');
+            btn.className = `tab-btn ${rubric === currentRubric ? 'active' : ''}`;
+            btn.innerText = rubric.replace("⚡️ ", "").split(" (")[0];
+            btn.onclick = () => filterRubric(rubric);
+            tabsContainer.appendChild(btn);
+        });
+
+        // Функция отрисовки карточек
+        function renderCards(searchText = '') {
+            const container = document.getElementById('articles-container');
+            container.innerHTML = '';
+
+            const filtered = AI_KNOWLEDGE_BASE.filter(item => {
+                const matchesRubric = currentRubric === 'Все' || item.rubric === currentRubric;
+                const matchesSearch = item.text.toLowerCase().includes(searchText.toLowerCase()) || 
+                                      item.title.toLowerCase().includes(searchText.toLowerCase());
+                return matchesRubric && matchesSearch;
+            });
+
+            filtered.forEach(item => {
+                const card = document.createElement('div');
+                card.className = 'card';
+                card.innerHTML = `
+                    <div class="card-header">
+                        <span>${item.rubric}</span>
+                        <span>${item.date}</span>
+                    </div>
+                    <div class="card-title">${item.title}</div>
+                    <div class="card-text">${item.text}</div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function filterRubric(rubric) {
+            currentRubric = rubric;
+            document.querySelectorAll('.tab-btn').forEach((btn, idx) => {
+                btn.className = `tab-btn ${rubrics[idx] === rubric ? 'active' : ''}`;
+            });
+            renderCards(document.getElementById('search').value);
+        }
+
+        // Слушатель для живого поиска на лету
+        document.getElementById('search').addEventListener('input', (e) => {
+            renderCards(e.target.value);
+        });
+
+        // Первичный запуск
+        renderCards();
+    </script>
+</body>
+</html>
