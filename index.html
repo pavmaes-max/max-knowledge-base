@@ -13,7 +13,7 @@
         .tab-btn.active { background-color: #007aff; color: white; }
         .card { background: white; padding: 15px; border-radius: 12px; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
         .card-header { display: flex; justify-content: space-between; font-size: 12px; color: #8e8e93; margin-bottom: 8px; }
-        .card-title { font-size: 18px; font-weight: bold; margin-bottom: 8px; color: #1c1c1e; }
+        .card-title { font-size: 18px; font-weight: bold; margin-bottom: 8px; color: #1c1c1e; line-height: 1.4; }
         .card-image { width: 100%; max-height: 350px; object-fit: cover; border-radius: 8px; margin-bottom: 12px; display: block; }
         .card-text { font-size: 14px; line-height: 1.5; white-space: pre-wrap; }
     </style>
@@ -85,21 +85,39 @@
                 return matchesRubric && matchesSearch;
             });
 
-            filtered.forEach((item, index) => {
+            filtered.forEach((item) => {
                 const card = document.createElement('div');
                 card.className = 'card';
                 
                 let cleanText = superCleanTelegramText(item.text);
                 
-                // Исправленное безопасное извлечение первой строки для заголовка
-                let lines = cleanText.split('\n');
-                let firstLine = (lines && lines.length > 0) ? lines[0] : '';
-                let displayTitle = firstLine ? firstLine.replace(/⚡️/g, '').replace(/#/g, '').trim().substring(0, 70) : `Пост №${item.id}`;
+                // Извлечение полной версии заголовка без обрезок по длине
+                let displayTitle = '';
+                if (item.title && !item.title.includes("[{") && !item.title.includes("{'")) {
+                    displayTitle = item.title.replace(/⚡️/g, '').replace(/#/g, '').trim();
+                } else {
+                    let lines = cleanText.split('\n');
+                    let firstLine = (lines && lines.length > 0) ? lines[0] : '';
+                    displayTitle = firstLine.replace(/⚡️/g, '').replace(/#/g, '').trim();
+                }
 
-                // Логика смещения индекса на минус 1 для папки photos/
+                // Вычисляем стабильную позицию поста в ИСХОДНОЙ полной базе данных (до фильтрации)
+                const realPosition = sortedBase.findIndex(baseItem => baseItem.id === item.id);
+
                 let imageHtml = '';
-                if (index > 0) {
-                    let imgNum = index; 
+                
+                // Исключения без картинок
+                if (realPosition === 0 || item.id === 19) {
+                    imageHtml = '';
+                } 
+                // Посты, идущие до "Бытового ИИ"
+                else if (item.id < 19) {
+                    let imgNum = realPosition; 
+                    imageHtml = `<img class="card-image" src="photos/photo_${imgNum}.jpg" onerror="this.style.display='none';" alt="Иллюстрация">`;
+                } 
+                // Посты, идущие строго после "Бытового ИИ" (сдвиг на -1)
+                else {
+                    let imgNum = realPosition - 1; 
                     imageHtml = `<img class="card-image" src="photos/photo_${imgNum}.jpg" onerror="this.style.display='none';" alt="Иллюстрация">`;
                 }
 
