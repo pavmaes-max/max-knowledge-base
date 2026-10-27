@@ -31,44 +31,29 @@
             document.body.style.backgroundColor = window.WebApp.backgroundColor || "#f5f5f7";
         }
 
-        // Рекурсивный очиститель сложной структуры Telegram JSON-строк в обычный текст
-        function parseTelegramContent(rawInput) {
-            let str = String(rawInput).trim();
+        // Прямой текстовый очиститель от абсолютно любых программных скобок и тегов
+        function cleanRawTelegramText(rawText) {
+            let str = String(rawText).trim();
             
-            // Если текст пришел как чистая строка, возвращаем её
-            if (!str.startsWith('[') && !str.startsWith('{')) {
-                return str;
-            }
-            
-            // Превращаем питоновские одинарные кавычки в валидный JSON формат
-            try {
-                let validJsonStr = str.replace(/'/g, '"');
-                let obj = JSON.parse(validJsonStr);
-                return extractTextFromObj(obj);
-            } catch (e) {
-                // Если JSON сложный, вытаскиваем текст регулярным выражением
-                let textMatches = str.match(/'text':\s*'([^']*)'|"text":\s*"([^"]*)"/g);
-                if (textMatches) {
-                    return textMatches.map(m => {
-                        return m.replace(/'text':\s*'/,'').replace(/"text":\s*"/,'').replace(/['"]$/, '');
-                    }).join('').replace(/\\n/g, '\n');
+            // Если внутри есть маркеры структуры Telegram, вырезаем только полезный текст
+            if (str.includes("'text':") || str.includes('"text":')) {
+                let matches = str.match(/(?:['"]text['"]\s*:\s*['"])(.*?)(?:['"])/g);
+                if (matches) {
+                    return matches.map(m => {
+                        return m.replace(/['"]text['"]\s*:\s*['"]/, '').replace(/['"]$/, '').replace(/\\n/g, '\n');
+                    }).join('').trim();
                 }
             }
-            return str;
-        }
-
-        function extractTextFromObj(node) {
-            if (typeof node === 'string') return node;
-            if (Array.isArray(node)) return node.map(extractTextFromObj).join('');
-            if (typeof node === 'object' && node !== null) {
-                if (node.text) return extractTextFromObj(node.text);
-                return '';
-            }
-            return '';
+            
+            // Тотальное стирание оставшихся скобок, если регулярка не сработала
+            str = str.replace(/[\[\]\{\}]/g, '');
+            str = str.replace(/['"]type['"]\s*:\s*['\"].*?['\"],?/g, '');
+            str = str.replace(/['"]text['"]\s*:\s*/g, '');
+            str = str.replace(/\\n/g, '\n');
+            return str.trim();
         }
 
         let currentRubric = 'Все';
-        // Сортируем базу строго по ID постов (хронология)
         const sortedBase = [...AI_KNOWLEDGE_BASE].sort((a, b) => a.id - b.id);
         const rubrics = ['Все', ...new Set(sortedBase.map(item => item.rubric))];
         const tabsContainer = document.getElementById('tabs-container');
@@ -89,7 +74,7 @@
             container.innerHTML = '';
 
             const filtered = sortedBase.filter(item => {
-                let cleanText = parseTelegramContent(item.text);
+                let cleanText = cleanRawTelegramText(item.text);
                 const matchesRubric = currentRubric === 'Все' || item.rubric === currentRubric;
                 const matchesSearch = cleanText.toLowerCase().includes(searchText.toLowerCase()) || 
                                       item.title.toLowerCase().includes(searchText.toLowerCase());
@@ -100,9 +85,13 @@
                 const card = document.createElement('div');
                 card.className = 'card';
                 
-                let cleanText = parseTelegramContent(item.text);
+                let cleanText = cleanRawTelegramText(item.text);
                 
-                // Подтягиваем картинку по хронологическому номеру (так как они теперь отсортированы по дате)
+                // Делаем красивый чистый заголовок из первой строчки поста
+                let firstLine = cleanText.split('\n')[0] || `Пост №${item.id}`;
+                let displayTitle = firstLine.replace(/⚡️/g, '').replace(/#/g, '').trim().substring(0, 70);
+
+                // Картинка подтягивается из корня строго по порядку отсортированных по дате файлов
                 let imgNum = index + 1;
                 let imageHtml = `<img class="card-image" src="photo_${imgNum}.jpg" onerror="this.style.display='none';" alt="Иллюстрация">`;
 
@@ -111,7 +100,7 @@
                         <span>${item.rubric}</span>
                         <span>${item.date}</span>
                     </div>
-                    <div class="card-title">${item.title}</div>
+                    <div class="card-title">${displayTitle}</div>
                     ${imageHtml}
                     <div class="card-text">${cleanText}</div>
                 `;
