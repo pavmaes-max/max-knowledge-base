@@ -31,16 +31,25 @@
             document.body.style.backgroundColor = window.WebApp.backgroundColor || "#f5f5f7";
         }
 
-        function cleanRawTelegramText(rawText) {
+        // Регулярный очиститель текстовых массивов Telegram
+        function superCleanTelegramText(rawText) {
             let str = String(rawText).trim();
+            
             if (str.includes("'text':") || str.includes('"text":')) {
-                let matches = str.match(/(?:['"]text['"]\s*:\s*['"])(.*?)(?:['"])/g);
-                if (matches) {
-                    return matches.map(m => {
-                        return m.replace(/['"]text['"]\s*:\s*['"]/, '').replace(/['"]$/, '').replace(/\\n/g, '\n');
-                    }).join('').trim();
+                let regex = /(?:['"]text['"]\s*:\s*['"])(.*?)(?:['"])/g;
+                let matches = [];
+                let match;
+                while ((match = regex.exec(str)) !== null) {
+                    let chunk = match[1];
+                    if (chunk !== 'plain' && chunk !== 'bold' && chunk !== 'italic' && chunk !== 'hashtag') {
+                        matches.push(chunk);
+                    }
+                }
+                if (matches.length > 0) {
+                    return matches.join('').replace(/\\n/g, '\n').replace(/\\"/g, '"').trim();
                 }
             }
+            
             str = str.replace(/[\[\]\{\}]/g, '');
             str = str.replace(/['"]type['"]\s*:\s*['\"].*?['\"],?/g, '');
             str = str.replace(/['"]text['"]\s*:\s*/g, '');
@@ -58,7 +67,7 @@
             rubrics.forEach(rubric => {
                 const btn = document.createElement('button');
                 btn.className = `tab-btn ${rubric === currentRubric ? 'active' : ''}`;
-                btn.innerText = rubric.replace("⚡️ ", "").split(" (");
+                btn.innerText = rubric.replace("⚡️ ", "").split(" (")[0];
                 btn.onclick = () => filterRubric(rubric);
                 tabsContainer.appendChild(btn);
             });
@@ -69,9 +78,9 @@
             container.innerHTML = '';
 
             const filtered = sortedBase.filter(item => {
-                let cleanText = cleanRawTelegramText(item.text);
+                let cleanText = superCleanTelegramText(item.text);
                 const matchesRubric = currentRubric === 'Все' || item.rubric === currentRubric;
-                const matchesSearch = cleanText.toLowerCase().includes(searchText.toLowerCase()) || 
+                const matchesSearch = cleanText.toLowerCase().includes(searchText.toLowerCase()) ||
                                       item.title.toLowerCase().includes(searchText.toLowerCase());
                 return matchesRubric && matchesSearch;
             });
@@ -80,15 +89,17 @@
                 const card = document.createElement('div');
                 card.className = 'card';
                 
-                let cleanText = cleanRawTelegramText(item.text);
-                let firstLine = cleanText.split('\n')[0] || `Пост №${item.id}`;
-                let displayTitle = firstLine.replace(/⚡️/g, '').replace(/#/g, '').trim().substring(0, 70);
+                let cleanText = superCleanTelegramText(item.text);
+                
+                // Исправленное безопасное извлечение первой строки для заголовка
+                let lines = cleanText.split('\n');
+                let firstLine = (lines && lines.length > 0) ? lines[0] : '';
+                let displayTitle = firstLine ? firstLine.replace(/⚡️/g, '').replace(/#/g, '').trim().substring(0, 70) : `Пост №${item.id}`;
 
-                // ТОЧНАЯ СХЕМА: Индекс 0 (1-й пост) идет без фото.
-                // Начиная с индекса 1 (2-й пост) подставляется photo_1.jpg, далее photo_2.jpg и т.д.
+                // Логика смещения индекса на минус 1 для папки photos/
                 let imageHtml = '';
-                if (index > 0 && index <= 76) {
-                    let imgNum = index; // Для 2-го поста (index=1) imgNum станет равным 1
+                if (index > 0) {
+                    let imgNum = index; 
                     imageHtml = `<img class="card-image" src="photos/photo_${imgNum}.jpg" onerror="this.style.display='none';" alt="Иллюстрация">`;
                 }
 
