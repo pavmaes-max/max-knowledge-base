@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mini App Bot Knowledge Base</title>
+    <title>База Знаний: Как мыслит ИИ</title>
     <!-- Подключение Telegram Web Apps API -->
     <script src="https://telegram.org"></script>
     <style>
@@ -32,17 +32,23 @@
             font-size: 1.2rem;
             font-weight: bold;
             margin-bottom: 8px;
+            color: var(--tg-theme-text-color);
+        }
+        .post-meta {
+            font-size: 0.85rem;
+            color: var(--tg-theme-hint-color);
+            margin-bottom: 8px;
         }
         .post-image {
             max-width: 100%;
             height: auto;
             border-radius: 8px;
-            margin-bottom: 8px;
+            margin-bottom: 12px;
             display: block;
         }
         .post-text {
             font-size: 1rem;
-            line-height: 1.4;
+            line-height: 1.5;
             white-space: pre-wrap;
         }
         .error-message {
@@ -64,36 +70,33 @@
         <div id="content"></div>
     </div>
 
+    <!-- Прямое подключение базы знаний как скрипта -->
+    <script src="data.js"></script>
+
     <script>
         // Инициализация Telegram Web App
         const tg = window.Telegram.WebApp;
-        tg.ready();
-        tg.expand();
+        if (tg) {
+            tg.ready();
+            tg.expand();
+        }
 
-        // Конфигурация проекта
-        const BASE_URL = "https://github.io"; // Адрес вашей базы знаний
-        
-        // Словарь точных заголовков из CSV-выгрузки (исправление багов отображения)
+        // Словарь точных исправленных заголовков по ID из вашей выгрузки
         const customTitles = {
             10: "Исследование Стэнфорда: Как ИИ меняет обучение",
-            88: "Пост без тегов №88: Важное объявление",
-            91: "Пост без тегов №91: Информационная заметка",
-            92: "Пост без тегов №92: Дополнительные материалы"
+            88: "Вектор: Смерть промпт-инжиниринга. За что на самом деле платят в 2026 году",
+            91: "Вектор: Как подружить креативный мозг ребёнка с ИИ (инструкция для родителей и школы)",
+            92: "Вектор: Цифровой аутизм. Почему 20% детей уходят к нейросетям?"
         };
 
-        // ID постов без изображений (Пост №2 и Пост №19 с бытовым ИИ/видео)
+        // Исключения: ID постов, у которых нет картинок (Пост №2 и Пост №19 с видео/бытовым ИИ)
         const noImageIds =;
 
-        // Массив ID постов без JSON-тегов, которые защищены от очистителя символов
+        // Посты без JSON-тегов, текст которых нельзя трогать очистителем
         const protectedIds =;
 
         /**
-         * Функция расчета имени файла изображения по ID поста
-         * Логика смещения:
-         * - id 2: без фото
-         * - со 2-го поста (id > 2) смещение -1 (photo_1, photo_2...)
-         * - id 19: видео, без фото
-         * - после 19 поста (id > 19) смещение становится -2
+         * Динамический расчет пути к картинкам по вашей логике смещения
          */
         function getImagePath(id) {
             if (noImageIds.includes(id)) {
@@ -113,33 +116,67 @@
         }
 
         /**
-         * Очиститель текста. Удаляет лишние технические символы, 
-         * но игнорирует защищенные посты без JSON-тегов.
+         * Умный очиститель текста. 
+         * Если пост защищен — возвращает текст "как есть".
+         * Если содержит JSON-разметку вида [{'type':...}] — деликатно извлекает только слова.
          */
         function cleanAndFormatText(text, id) {
             if (!text) return "";
             
-            // Если пост защищен — отдаем текст в исходном виде (без затирания)
+            // Если пост в исходном текстовом формате — просто отдаем его
             if (protectedIds.includes(id)) {
                 return text.trim();
             }
 
+            // Если в тексте осталась сырая строковая JSON-разметка от выгрузки — парсим её куски
+            if (text.trim().startsWith('[') || text.trim().startsWith('{')) {
+                try {
+                    const matches = text.match(/'text':\s*({[^}]*}|'[^']*'|"[^"]*")/g);
+                    if (matches) {
+                        let parsedPieces = [];
+                        matches.forEach(match => {
+                            let cleanStr = match.replace(/'text':\s*/, "")
+                                                .replace(/^['"]|['"]$/g, "")
+                                                .replace(/\\n/g, "\n");
+                            
+                            if (cleanStr.includes("'text':")) {
+                                const subMatch = cleanStr.match(/'text':\s*'([^']*)'/);
+                                if (subMatch) cleanStr = subMatch[1];
+                            }
+                            
+                            if (!cleanStr.startsWith('{')) {
+                                parsedPieces.push(cleanStr);
+                            }
+                        });
+                        if (parsedPieces.length > 0) {
+                            return parsedPieces.join(" ").replace(/\s+/g, " ").trim();
+                        }
+                    }
+                } catch (e) {
+                    console.error("Ошибка регулярного парсинга JSON-структуры для ID " + id, e);
+                }
+            }
+
+            // Резервный деликатный очиститель символов
             let cleanedText = text;
             try {
-                // Очиститель: убирает остаточные JSON-конструкции, фигурные скобки и служебный мусор
                 cleanedText = cleanedText
-                    .replace(/\{[^}]*\}/g, "") // Удаляет всё внутри фигурных скобок вместе с ними
-                    .replace(/[\\"[\]]/g, "")   // Удаляет экраны, лишние кавычки и квадратные скобки
-                    .replace(/\s+/g, " ");      // Схлопывает множественные пробелы
+                    .replace(/\{[^}]*\}/g, "") 
+                    .replace(/\[|\]/g, "")     
+                    .replace(/受/g, "") 
+                    .replace(/'type':\s*'[^']*',?/g, "") 
+                    .replace(/'plain'|'bold'|'italic'|'concat'|'text':/g, "") 
+                    .replace(/[\\']/g, "")     
+                    .replace(/\s+/g, " ");      
             } catch (e) {
-                console.error("Ошибка при очистке текста для ID " + id, e);
+                console.error("Ошибка при резервной очистке текста для ID " + id, e);
             }
             
             return cleanedText.trim();
         }
 
         /**
-         * Рендеринг полученных данных на страницу
+         * Рендеринг базы знаний на экран
          */
         function renderPosts(posts) {
             const contentDiv = document.getElementById("content");
@@ -152,30 +189,34 @@
                 const postCard = document.createElement("div");
                 postCard.className = "post-card";
 
-                // Выбор заголовка: кастомный по ID или стандартный из data.json
+                // 1. Мета-информация (Рубрика и дата)
+                const metaEl = document.createElement("div");
+                metaEl.className = "post-meta";
+                metaEl.textContent = `${post.rubric || "⚡️ База"} • ${post.date || ""}`;
+                postCard.appendChild(metaEl);
+
+                // 2. Заголовок поста (Приоритет у customTitles)
                 const titleText = customTitles[post.id] || post.title || `Пост #${post.id}`;
-                
                 const titleEl = document.createElement("div");
                 titleEl.className = "post-title";
-                titleEl.textContent = titleText;
+                titleEl.textContent = titleText.replace(/[\\"[\]']/g, "").trim(); 
                 postCard.appendChild(titleEl);
 
-                // Рендеринг изображений с учетом логики смещения
+                // 3. Изображение по строгому правилу смещения
                 const imagePath = getImagePath(post.id);
                 if (imagePath) {
                     const imgEl = document.createElement("img");
                     imgEl.className = "post-image";
-                    imgEl.src = `${BASE_URL}/${imagePath}`;
+                    imgEl.src = imagePath;
                     imgEl.alt = titleText;
                     
-                    // Если картинки нет на сервере, скрываем элемент во избежание «битых» картинок
                     imgEl.onerror = function() {
                         this.style.display = 'none';
                     };
                     postCard.appendChild(imgEl);
                 }
 
-                // Обработка и вывод текста поста
+                // 4. Текст поста
                 const textEl = document.createElement("div");
                 textEl.className = "post-text";
                 textEl.textContent = cleanAndFormatText(post.text, post.id);
@@ -186,20 +227,15 @@
         }
 
         /**
-         * Загрузка данных из файла data.json
+         * Основной запуск приложения
          */
-        async function loadData() {
+        function initApp() {
             try {
-                const response = await fetch(`${BASE_URL}/data.json`);
-                if (!response.ok) {
-                    throw new Error(`Ошибка загрузки данных: ${response.status}`);
+                if (typeof AI_KNOWLEDGE_BASE === 'undefined' || !Array.isArray(AI_KNOWLEDGE_BASE)) {
+                    throw new Error("Переменная AI_KNOWLEDGE_BASE не найдена в data.js");
                 }
-                const data = await response.json();
                 
-                // Извлекаем массив постов в зависимости от структуры json
-                const posts = Array.isArray(data) ? data : data.posts || [];
-                
-                // Сортируем по возрастанию ID для корректной хронологии
+                const posts = [...AI_KNOWLEDGE_BASE];
                 posts.sort((a, b) => a.id - b.id);
                 
                 renderPosts(posts);
@@ -207,12 +243,11 @@
                 console.error(error);
                 document.getElementById("loading").style.display = "none";
                 const contentDiv = document.getElementById("content");
-                contentDiv.innerHTML = `<div class="error-message">Не удалось загрузить базу знаний. Проверьте файл data.json.</div>`;
+                contentDiv.innerHTML = `<div class="error-message">Не удалось загрузить данные.<br>Убедитесь, что файлы <b>index.html</b> и <b>data.js</b> лежат в одной папке на сервере.</div>`;
             }
         }
 
-        // Запуск логики после полной загрузки DOM-дерева
-        window.addEventListener('DOMContentLoaded', loadData);
+        window.addEventListener('DOMContentLoaded', initApp);
     </script>
 </body>
 </html>
