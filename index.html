@@ -4,250 +4,151 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>База Знаний: Как мыслит ИИ</title>
-    <!-- Подключение Telegram Web Apps API -->
-    <script src="https://telegram.org"></script>
+    <script src="https://max.ru"></script>
     <style>
-        :root {
-            --tg-theme-bg-color: #ffffff;
-            --tg-theme-text-color: #000000;
-            --tg-theme-hint-color: #707579;
-            --tg-theme-link-color: #2481cc;
-            --tg-theme-button-color: #2481cc;
-            --tg-theme-button-text-color: #ffffff;
-        }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background-color: var(--tg-theme-bg-color);
-            color: var(--tg-theme-text-color);
-            margin: 0;
-            padding: 16px;
-            box-sizing: border-box;
-        }
-        .post-card {
-            border-bottom: 1px solid var(--tg-theme-hint-color);
-            padding-bottom: 16px;
-            margin-bottom: 16px;
-        }
-        .post-title {
-            font-size: 1.2rem;
-            font-weight: bold;
-            margin-bottom: 8px;
-            color: var(--tg-theme-text-color);
-        }
-        .post-meta {
-            font-size: 0.85rem;
-            color: var(--tg-theme-hint-color);
-            margin-bottom: 8px;
-        }
-        .post-image {
-            max-width: 100%;
-            height: auto;
-            border-radius: 8px;
-            margin-bottom: 12px;
-            display: block;
-        }
-        .post-text {
-            font-size: 1rem;
-            line-height: 1.5;
-            white-space: pre-wrap;
-        }
-        .error-message {
-            color: red;
-            text-align: center;
-            margin-top: 20px;
-        }
-        .loading {
-            text-align: center;
-            color: var(--tg-theme-hint-color);
-            margin-top: 20px;
-        }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; margin: 0; padding: 15px; background-color: #f5f5f7; color: #333; }
+        .search-box { width: 100%; padding: 12px; font-size: 16px; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; margin-bottom: 15px; }
+        .tabs { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 10px; margin-bottom: 15px; }
+        .tab-btn { padding: 8px 14px; background-color: #e5e5ea; border: none; border-radius: 20px; font-size: 14px; cursor: pointer; white-space: nowrap; }
+        .tab-btn.active { background-color: #007aff; color: white; }
+        .card { background: white; padding: 15px; border-radius: 12px; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .card-header { display: flex; justify-content: space-between; font-size: 12px; color: #8e8e93; margin-bottom: 8px; }
+        .card-title { font-size: 18px; font-weight: bold; margin-bottom: 8px; color: #1c1c1e; line-height: 1.4; word-wrap: break-word; }
+        .card-image { width: 100%; max-height: 350px; object-fit: cover; border-radius: 8px; margin-bottom: 12px; display: block; }
+        .card-text { font-size: 14px; line-height: 1.5; white-space: pre-wrap; }
     </style>
 </head>
 <body>
 
-    <div id="app">
-        <div id="loading" class="loading">Загрузка базы знаний...</div>
-        <div id="content"></div>
-    </div>
+    <input type="text" id="search" class="search-box" placeholder="Поиск по базе знаний...">
+    <div class="tabs" id="tabs-container"></div>
+    <div id="articles-container"></div>
 
-    <!-- Прямое подключение базы знаний как скрипта -->
     <script src="data.js"></script>
-
     <script>
-        // Инициализация Telegram Web App
-        const tg = window.Telegram.WebApp;
-        if (tg) {
-            tg.ready();
-            tg.expand();
+        if (window.WebApp) {
+            window.WebApp.ready();
+            document.body.style.backgroundColor = window.WebApp.backgroundColor || "#f5f5f7";
         }
 
-        // Словарь точных исправленных заголовков по ID из вашей выгрузки
-        const customTitles = {
-            10: "Исследование Стэнфорда: Как ИИ меняет обучение",
-            88: "Вектор: Смерть промпт-инжиниринга. За что на самом деле платят в 2026 году",
-            91: "Вектор: Как подружить креативный мозг ребёнка с ИИ (инструкция для родителей и школы)",
-            92: "Вектор: Цифровой аутизм. Почему 20% детей уходят к нейросетям?"
-        };
-
-        // Исключения: ID постов, у которых нет картинок (Пост №2 и Пост №19 с видео/бытовым ИИ)
-        const noImageIds =;
-
-        // Посты без JSON-тегов, текст которых нельзя трогать очистителем
-        const protectedIds =;
-
-        /**
-         * Динамический расчет пути к картинкам по вашей логике смещения
-         */
-        function getImagePath(id) {
-            if (noImageIds.includes(id)) {
-                return null;
-            }
-            
-            let photoNumber;
-            if (id > 19) {
-                photoNumber = id - 2;
-            } else if (id > 2) {
-                photoNumber = id - 1;
-            } else {
-                return null;
-            }
-            
-            return `photos/photo_${photoNumber}.jpg`;
-        }
-
-        /**
-         * Умный очиститель текста. 
-         * Если пост защищен — возвращает текст "как есть".
-         * Если содержит JSON-разметку вида [{'type':...}] — деликатно извлекает только слова.
-         */
-        function cleanAndFormatText(text, id) {
-            if (!text) return "";
-            
-            // Если пост в исходном текстовом формате — просто отдаем его
-            if (protectedIds.includes(id)) {
-                return text.trim();
-            }
-
-            // Если в тексте осталась сырая строковая JSON-разметка от выгрузки — парсим её куски
-            if (text.trim().startsWith('[') || text.trim().startsWith('{')) {
-                try {
-                    const matches = text.match(/'text':\s*({[^}]*}|'[^']*'|"[^"]*")/g);
-                    if (matches) {
-                        let parsedPieces = [];
-                        matches.forEach(match => {
-                            let cleanStr = match.replace(/'text':\s*/, "")
-                                                .replace(/^['"]|['"]$/g, "")
-                                                .replace(/\\n/g, "\n");
-                            
-                            if (cleanStr.includes("'text':")) {
-                                const subMatch = cleanStr.match(/'text':\s*'([^']*)'/);
-                                if (subMatch) cleanStr = subMatch[1];
-                            }
-                            
-                            if (!cleanStr.startsWith('{')) {
-                                parsedPieces.push(cleanStr);
-                            }
-                        });
-                        if (parsedPieces.length > 0) {
-                            return parsedPieces.join(" ").replace(/\s+/g, " ").trim();
-                        }
+        function superCleanTelegramText(rawText) {
+            let str = String(rawText).trim();
+            if (str.includes("'text':") || str.includes('"text":')) {
+                let regex = /(?:['"]text['"]\s*:\s*['"])(.*?)(?:['"])/g;
+                let matches = [];
+                let match;
+                while ((match = regex.exec(str)) !== null) {
+                    let chunk = match[1];
+                    if (chunk !== 'plain' && chunk !== 'bold' && chunk !== 'italic' && chunk !== 'hashtag') {
+                        matches.push(chunk);
                     }
-                } catch (e) {
-                    console.error("Ошибка регулярного парсинга JSON-структуры для ID " + id, e);
+                }
+                if (matches.length > 0) {
+                    return matches.join('').replace(/\\n/g, '\n').replace(/\\"/g, '"').trim();
                 }
             }
-
-            // Резервный деликатный очиститель символов
-            let cleanedText = text;
-            try {
-                cleanedText = cleanedText
-                    .replace(/\{[^}]*\}/g, "") 
-                    .replace(/\[|\]/g, "")     
-                    .replace(/受/g, "") 
-                    .replace(/'type':\s*'[^']*',?/g, "") 
-                    .replace(/'plain'|'bold'|'italic'|'concat'|'text':/g, "") 
-                    .replace(/[\\']/g, "")     
-                    .replace(/\s+/g, " ");      
-            } catch (e) {
-                console.error("Ошибка при резервной очистке текста для ID " + id, e);
-            }
-            
-            return cleanedText.trim();
+            str = str.replace(/[\[\]\{\}]/g, '');
+            str = str.replace(/['"]type['"]\s*:\s*['\"].*?['\"],?/g, '');
+            str = str.replace(/['"]text['"]\s*:\s*/g, '');
+            str = str.replace(/\\n/g, '\n');
+            return str.trim();
         }
 
-        /**
-         * Рендеринг базы знаний на экран
-         */
-        function renderPosts(posts) {
-            const contentDiv = document.getElementById("content");
-            const loadingDiv = document.getElementById("loading");
-            
-            loadingDiv.style.display = "none";
-            contentDiv.innerHTML = "";
-
-            posts.forEach(post => {
-                const postCard = document.createElement("div");
-                postCard.className = "post-card";
-
-                // 1. Мета-информация (Рубрика и дата)
-                const metaEl = document.createElement("div");
-                metaEl.className = "post-meta";
-                metaEl.textContent = `${post.rubric || "⚡️ База"} • ${post.date || ""}`;
-                postCard.appendChild(metaEl);
-
-                // 2. Заголовок поста (Приоритет у customTitles)
-                const titleText = customTitles[post.id] || post.title || `Пост #${post.id}`;
-                const titleEl = document.createElement("div");
-                titleEl.className = "post-title";
-                titleEl.textContent = titleText.replace(/[\\"[\]']/g, "").trim(); 
-                postCard.appendChild(titleEl);
-
-                // 3. Изображение по строгому правилу смещения
-                const imagePath = getImagePath(post.id);
-                if (imagePath) {
-                    const imgEl = document.createElement("img");
-                    imgEl.className = "post-image";
-                    imgEl.src = imagePath;
-                    imgEl.alt = titleText;
-                    
-                    imgEl.onerror = function() {
-                        this.style.display = 'none';
-                    };
-                    postCard.appendChild(imgEl);
-                }
-
-                // 4. Текст поста
-                const textEl = document.createElement("div");
-                textEl.className = "post-text";
-                textEl.textContent = cleanAndFormatText(post.text, post.id);
-                postCard.appendChild(textEl);
-
-                contentDiv.appendChild(postCard);
+        let currentRubric = 'Все';
+        const sortedBase = [...AI_KNOWLEDGE_BASE].sort((a, b) => a.id - b.id);
+        const rubrics = ['Все', ...new Set(sortedBase.map(item => item.rubric))];
+        const tabsContainer = document.getElementById('tabs-container');
+        
+        function buildTabs() {
+            tabsContainer.innerHTML = '';
+            rubrics.forEach(rubric => {
+                const btn = document.createElement('button');
+                btn.className = `tab-btn ${rubric === currentRubric ? 'active' : ''}`;
+                btn.innerText = rubric.replace("⚡️ ", "").split(" (")[0];
+                btn.onclick = () => filterRubric(rubric);
+                tabsContainer.appendChild(btn);
             });
         }
 
-        /**
-         * Основной запуск приложения
-         */
-        function initApp() {
-            try {
-                if (typeof AI_KNOWLEDGE_BASE === 'undefined' || !Array.isArray(AI_KNOWLEDGE_BASE)) {
-                    throw new Error("Переменная AI_KNOWLEDGE_BASE не найдена в data.js");
+        function renderCards(searchText = '') {
+            const container = document.getElementById('articles-container');
+            container.innerHTML = '';
+
+            const filtered = sortedBase.filter(item => {
+                let cleanText = superCleanTelegramText(item.text);
+                const matchesRubric = currentRubric === 'Все' || item.rubric === currentRubric;
+                const matchesSearch = cleanText.toLowerCase().includes(searchText.toLowerCase()) ||
+                                      (item.title && String(item.title).toLowerCase().includes(searchText.toLowerCase()));
+                return matchesRubric && matchesSearch;
+            });
+
+            filtered.forEach((item) => {
+                const card = document.createElement('div');
+                card.className = 'card';
+                
+                let cleanText = superCleanTelegramText(item.text);
+                let textLines = cleanText.split('\n');
+                
+                let displayTitle = '';
+                
+                // Исправление бага для Поста №10 и других постов со сложной структурой строк
+                if (item.id === 10) {
+                    displayTitle = "⚡️ База: Эмпатия машин. Как ИИ читает твои эмоции? Серия 1: Лицо";
+                } else if (textLines.length > 0) {
+                    displayTitle = textLines[0].replace(/⚡️/g, '').replace(/#/g, '').trim();
+                } else {
+                    displayTitle = `Пост №${item.id}`;
                 }
+
+                // Очистка от дублирования строк
+                let displayBodyText = cleanText;
+                if (textLines.length > 0) {
+                    let titleClean = displayTitle.replace(/⚡️/g, '').replace(/#/g, '').trim().toLowerCase();
+                    let filteredLines = textLines.filter(line => {
+                        let lineClean = line.replace(/⚡️/g, '').replace(/#/g, '').trim().toLowerCase();
+                        return !(lineClean === '' || titleClean.includes(lineClean) || lineClean.includes(titleClean));
+                    });
+                    displayBodyText = filteredLines.join('\n').trim();
+                }
+
+                const realPosition = sortedBase.findIndex(baseItem => baseItem.id === item.id);
+                let imageHtml = '';
                 
-                const posts = [...AI_KNOWLEDGE_BASE];
-                posts.sort((a, b) => a.id - b.id);
-                
-                renderPosts(posts);
-            } catch (error) {
-                console.error(error);
-                document.getElementById("loading").style.display = "none";
-                const contentDiv = document.getElementById("content");
-                contentDiv.innerHTML = `<div class="error-message">Не удалось загрузить данные.<br>Убедитесь, что файлы <b>index.html</b> и <b>data.js</b> лежат в одной папке на сервере.</div>`;
-            }
+                if (realPosition === 0 || item.id === 19) {
+                    imageHtml = '';
+                } else if (item.id < 19) {
+                    let imgNum = realPosition; 
+                    imageHtml = `<img class="card-image" src="photos/photo_${imgNum}.jpg" onerror="this.style.display='none';" alt="Иллюстрация">`;
+                } else {
+                    let imgNum = realPosition - 1; 
+                    imageHtml = `<img class="card-image" src="photos/photo_${imgNum}.jpg" onerror="this.style.display='none';" alt="Иллюстрация">`;
+                }
+
+                card.innerHTML = `
+                    <div class="card-header">
+                        <span>${item.rubric}</span>
+                        <span>${item.date}</span>
+                    </div>
+                    <div class="card-title">${displayTitle}</div>
+                    ${imageHtml}
+                    <div class="card-text">${displayBodyText}</div>
+                `;
+                container.appendChild(card);
+            });
         }
 
-        window.addEventListener('DOMContentLoaded', initApp);
+        function filterRubric(rubric) {
+            currentRubric = rubric;
+            buildTabs();
+            renderCards(document.getElementById('search').value);
+        }
+
+        document.getElementById('search').addEventListener('input', (e) => {
+            renderCards(e.target.value);
+        });
+
+        buildTabs();
+        renderCards();
     </script>
 </body>
 </html>
