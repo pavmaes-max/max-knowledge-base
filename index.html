@@ -31,8 +31,10 @@
             document.body.style.backgroundColor = window.WebApp.backgroundColor || "#f5f5f7";
         }
 
+        // Регулярный очиститель текстовых массивов Telegram
         function superCleanTelegramText(rawText) {
             let str = String(rawText).trim();
+            
             if (str.includes("'text':") || str.includes('"text":')) {
                 let regex = /(?:['"]text['"]\s*:\s*['"])(.*?)(?:['"])/g;
                 let matches = [];
@@ -47,6 +49,7 @@
                     return matches.join('').replace(/\\n/g, '\n').replace(/\\"/g, '"').trim();
                 }
             }
+            
             str = str.replace(/[\[\]\{\}]/g, '');
             str = str.replace(/['"]type['"]\s*:\s*['\"].*?['\"],?/g, '');
             str = str.replace(/['"]text['"]\s*:\s*/g, '');
@@ -64,7 +67,7 @@
             rubrics.forEach(rubric => {
                 const btn = document.createElement('button');
                 btn.className = `tab-btn ${rubric === currentRubric ? 'active' : ''}`;
-                btn.innerText = rubric.replace("⚡️ ", "").split(" (")[0];
+                btn.innerText = rubric.replace("⚡️ ", "");
                 btn.onclick = () => filterRubric(rubric);
                 tabsContainer.appendChild(btn);
             });
@@ -78,7 +81,7 @@
                 let cleanText = superCleanTelegramText(item.text);
                 const matchesRubric = currentRubric === 'Все' || item.rubric === currentRubric;
                 const matchesSearch = cleanText.toLowerCase().includes(searchText.toLowerCase()) ||
-                                      (item.title && String(item.title).toLowerCase().includes(searchText.toLowerCase()));
+                                      item.title.toLowerCase().includes(searchText.toLowerCase());
                 return matchesRubric && matchesSearch;
             });
 
@@ -87,39 +90,48 @@
                 card.className = 'card';
                 
                 let cleanText = superCleanTelegramText(item.text);
-                let textLines = cleanText.split('\n');
                 
-                let displayTitle = '';
-                
-                // Исправление бага для Поста №10 и других постов со сложной структурой строк
-                if (item.id === 10) {
-                    displayTitle = "⚡️ База: Эмпатия машин. Как ИИ читает твои эмоции? Серия 1: Лицо";
-                } else if (textLines.length > 0) {
-                    displayTitle = textLines[0].replace(/⚡️/g, '').replace(/#/g, '').trim();
+                // 1. Формируем чистый заголовок до 200 символов (Знаки решеток # НЕ удаляем)
+                let rawTitle = item.title;
+                if (!rawTitle || rawTitle.includes("[{") || rawTitle.includes("{'")) {
+                    let lines = cleanText.split('\n');
+                    rawTitle = (lines && lines.length > 0) ? lines[0] : `Пост №${item.id}`;
                 } else {
-                    displayTitle = `Пост №${item.id}`;
+                    rawTitle = superCleanTelegramText(rawTitle);
                 }
 
-                // Очистка от дублирования строк
-                let displayBodyText = cleanText;
+                let displayTitle = rawTitle.replace(/⚡️/g, '').trim().substring(0, 200);
+
+                // 2. Убираем дублирование первой строчки в основном тексте, если она совпадает с заголовком
+                let displayLengthText = cleanText;
+                let textLines = cleanText.split('\n');
                 if (textLines.length > 0) {
-                    let titleClean = displayTitle.replace(/⚡️/g, '').replace(/#/g, '').trim().toLowerCase();
-                    let filteredLines = textLines.filter(line => {
-                        let lineClean = line.replace(/⚡️/g, '').replace(/#/g, '').trim().toLowerCase();
-                        return !(lineClean === '' || titleClean.includes(lineClean) || lineClean.includes(titleClean));
-                    });
-                    displayBodyText = filteredLines.join('\n').trim();
+                    let firstLineClean = textLines[0].replace(/⚡️/g, '').replace(/#/g, '').trim().toLowerCase();
+                    let titleClean = displayTitle.replace(/#/g, '').trim().toLowerCase();
+                    
+                    // Если первая строчка текста — это копия заголовка, удаляем её из отображения текста
+                    if (titleClean.includes(firstLineClean) || firstLineClean.includes(titleClean)) {
+                        textLines.shift();
+                        displayLengthText = textLines.join('\n').trim();
+                    }
                 }
 
+                // 3. Вычисляем стабильную позицию поста в ИСХОДНОЙ полной базе данных (для картинок)
                 const realPosition = sortedBase.findIndex(baseItem => baseItem.id === item.id);
+
                 let imageHtml = '';
                 
+                // Исключения без картинок
                 if (realPosition === 0 || item.id === 19) {
                     imageHtml = '';
-                } else if (item.id < 19) {
+                } 
+                // Посты, идущие до "Бытового ИИ"
+                else if (item.id < 19) {
                     let imgNum = realPosition; 
                     imageHtml = `<img class="card-image" src="photos/photo_${imgNum}.jpg" onerror="this.style.display='none';" alt="Иллюстрация">`;
-                } else {
+                } 
+                // Посты, идущие строго после "Бытового ИИ" (сдвиг на -1)
+                else {
                     let imgNum = realPosition - 1; 
                     imageHtml = `<img class="card-image" src="photos/photo_${imgNum}.jpg" onerror="this.style.display='none';" alt="Иллюстрация">`;
                 }
@@ -131,7 +143,7 @@
                     </div>
                     <div class="card-title">${displayTitle}</div>
                     ${imageHtml}
-                    <div class="card-text">${displayBodyText}</div>
+                    <div class="card-text">${displayLengthText}</div>
                 `;
                 container.appendChild(card);
             });
