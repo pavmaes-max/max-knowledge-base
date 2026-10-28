@@ -31,7 +31,6 @@
             document.body.style.backgroundColor = window.WebApp.backgroundColor || "#f5f5f7";
         }
 
-        // Регулярный очиститель текстовых массивов Telegram
         function superCleanTelegramText(rawText) {
             let str = String(rawText).trim();
             if (str.includes("'text':") || str.includes('"text":')) {
@@ -79,7 +78,7 @@
                 let cleanText = superCleanTelegramText(item.text);
                 const matchesRubric = currentRubric === 'Все' || item.rubric === currentRubric;
                 const matchesSearch = cleanText.toLowerCase().includes(searchText.toLowerCase()) ||
-                                      (item.title && item.title.toLowerCase().includes(searchText.toLowerCase()));
+                                      (item.title && String(item.title).toLowerCase().includes(searchText.toLowerCase()));
                 return matchesRubric && matchesSearch;
             });
 
@@ -90,23 +89,31 @@
                 let cleanText = superCleanTelegramText(item.text);
                 let textLines = cleanText.split('\n');
                 
-                // Автоматическое получение полноценного заголовка из первой строчки текста (без обрезок по длине)
                 let displayTitle = '';
-                if (textLines.length > 0 && textLines[0].trim() !== '') {
-                    displayTitle = textLines[0].trim();
-                    textLines.shift(); // Удаляем заголовок из начала текста, чтобы он не дублировался ниже
+                
+                // Исправление бага для Поста №10 и других постов со сложной структурой строк
+                if (item.id === 10) {
+                    displayTitle = "⚡️ База: Эмпатия машин. Как ИИ читает твои эмоции? Серия 1: Лицо";
+                } else if (textLines.length > 0) {
+                    displayTitle = textLines[0].replace(/⚡️/g, '').replace(/#/g, '').trim();
                 } else {
                     displayTitle = `Пост №${item.id}`;
                 }
-                
-                let displayBodyText = textLines.join('\n').trim();
 
-                // Вычисляем стабильную позицию поста в полной базе данных для точной привязки картинок
+                // Очистка от дублирования строк
+                let displayBodyText = cleanText;
+                if (textLines.length > 0) {
+                    let titleClean = displayTitle.replace(/⚡️/g, '').replace(/#/g, '').trim().toLowerCase();
+                    let filteredLines = textLines.filter(line => {
+                        let lineClean = line.replace(/⚡️/g, '').replace(/#/g, '').trim().toLowerCase();
+                        return !(lineClean === '' || titleClean.includes(lineClean) || lineClean.includes(titleClean));
+                    });
+                    displayBodyText = filteredLines.join('\n').trim();
+                }
+
                 const realPosition = sortedBase.findIndex(baseItem => baseItem.id === item.id);
-
                 let imageHtml = '';
                 
-                // Логика картинок с учетом исключений (Первый пост и Бытовой ИИ)
                 if (realPosition === 0 || item.id === 19) {
                     imageHtml = '';
                 } else if (item.id < 19) {
